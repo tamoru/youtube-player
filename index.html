@@ -1,0 +1,274 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>YouTube動画プレイヤー</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, sans-serif;
+      background: #0f0f0f;
+      color: #fff;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 40px 20px;
+    }
+    h1 {
+      font-size: 1.5rem;
+      margin-bottom: 24px;
+      font-weight: 500;
+    }
+    .input-area {
+      display: flex;
+      gap: 8px;
+      width: 100%;
+      max-width: 960px;
+      margin-bottom: 16px;
+    }
+    input {
+      flex: 1;
+      padding: 12px 16px;
+      border: 1px solid #333;
+      border-radius: 8px;
+      background: #1a1a1a;
+      color: #fff;
+      font-size: 1rem;
+      outline: none;
+    }
+    input:focus { border-color: #ff0000; }
+    button {
+      padding: 12px 20px;
+      background: #ff0000;
+      color: #fff;
+      border: none;
+      border-radius: 8px;
+      font-size: 0.9rem;
+      cursor: pointer;
+      white-space: nowrap;
+    }
+    button:hover { background: #cc0000; }
+    .error {
+      color: #ff4444;
+      margin-bottom: 12px;
+      display: none;
+      max-width: 960px;
+      width: 100%;
+    }
+    .main {
+      display: flex;
+      gap: 16px;
+      width: 100%;
+      max-width: 960px;
+    }
+    .player-area {
+      flex: 1;
+      min-width: 0;
+    }
+    .player {
+      width: 100%;
+      aspect-ratio: 16 / 9;
+      display: none;
+    }
+    .player iframe {
+      width: 100%;
+      height: 100%;
+      border: none;
+      border-radius: 12px;
+    }
+    .player-placeholder {
+      width: 100%;
+      aspect-ratio: 16 / 9;
+      background: #1a1a1a;
+      border-radius: 12px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: #555;
+      font-size: 0.95rem;
+    }
+    .list-area {
+      width: 280px;
+      flex-shrink: 0;
+    }
+    .list-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 8px;
+    }
+    .list-header h2 {
+      font-size: 0.95rem;
+      font-weight: 500;
+    }
+    .list-header span {
+      font-size: 0.8rem;
+      color: #888;
+    }
+    .video-list {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      max-height: 70vh;
+      overflow-y: auto;
+    }
+    .video-item {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 8px;
+      background: #1a1a1a;
+      border: 2px solid transparent;
+      border-radius: 8px;
+      cursor: pointer;
+      transition: border-color 0.15s;
+    }
+    .video-item:hover { border-color: #333; }
+    .video-item.active { border-color: #ff0000; }
+    .video-item img {
+      width: 100px;
+      height: 56px;
+      border-radius: 4px;
+      object-fit: cover;
+      flex-shrink: 0;
+    }
+    .video-info {
+      flex: 1;
+      min-width: 0;
+      font-size: 0.8rem;
+      color: #ccc;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .video-item .remove-btn {
+      background: none;
+      border: none;
+      color: #666;
+      font-size: 1.1rem;
+      cursor: pointer;
+      padding: 2px 6px;
+      border-radius: 4px;
+      flex-shrink: 0;
+    }
+    .video-item .remove-btn:hover { color: #ff4444; background: #2a2a2a; }
+    .empty-list {
+      color: #555;
+      font-size: 0.85rem;
+      text-align: center;
+      padding: 32px 0;
+    }
+    @media (max-width: 768px) {
+      .main { flex-direction: column; }
+      .list-area { width: 100%; }
+    }
+  </style>
+</head>
+<body>
+  <h1>YouTube動画プレイヤー</h1>
+  <div class="input-area">
+    <input type="text" id="url" placeholder="YouTube URLを貼り付けてリストに追加">
+    <button onclick="addVideo()">追加</button>
+  </div>
+  <p class="error" id="error">有効なYouTube URLを入力してください</p>
+  <div class="main">
+    <div class="player-area">
+      <div class="player" id="player">
+        <iframe id="frame" allowfullscreen allow="autoplay; encrypted-media"></iframe>
+      </div>
+      <div class="player-placeholder" id="placeholder">リストから動画を選択してください</div>
+    </div>
+    <div class="list-area">
+      <div class="list-header">
+        <h2>再生リスト</h2>
+        <span id="count"></span>
+      </div>
+      <div class="video-list" id="list">
+        <div class="empty-list" id="empty">URLを入力して動画を追加</div>
+      </div>
+    </div>
+  </div>
+  <script>
+    const videos = [];
+    let activeId = null;
+
+    function extractVideoId(url) {
+      const m = url.match(/(?:youtube\.com\/watch\?.*v=|youtu\.be\/|youtube\.com\/embed\/|youtube\.com\/shorts\/)([a-zA-Z0-9_-]{11})/);
+      return m ? m[1] : null;
+    }
+
+    function addVideo() {
+      const input = document.getElementById('url');
+      const url = input.value.trim();
+      const error = document.getElementById('error');
+      const videoId = extractVideoId(url);
+
+      if (!videoId) {
+        error.style.display = 'block';
+        return;
+      }
+      if (videos.some(v => v.id === videoId)) {
+        error.style.display = 'none';
+        playVideo(videoId);
+        input.value = '';
+        return;
+      }
+
+      error.style.display = 'none';
+      videos.push({ id: videoId });
+      input.value = '';
+      renderList();
+      playVideo(videoId);
+    }
+
+    function removeVideo(videoId, e) {
+      e.stopPropagation();
+      const idx = videos.findIndex(v => v.id === videoId);
+      if (idx === -1) return;
+      videos.splice(idx, 1);
+      if (activeId === videoId) {
+        activeId = null;
+        document.getElementById('player').style.display = 'none';
+        document.getElementById('frame').src = '';
+        document.getElementById('placeholder').style.display = 'flex';
+      }
+      renderList();
+    }
+
+    function playVideo(videoId) {
+      activeId = videoId;
+      document.getElementById('frame').src = 'https://www.youtube.com/embed/' + videoId + '?autoplay=1';
+      document.getElementById('player').style.display = 'block';
+      document.getElementById('placeholder').style.display = 'none';
+      document.querySelectorAll('.video-item').forEach(el => {
+        el.classList.toggle('active', el.dataset.id === videoId);
+      });
+    }
+
+    function renderList() {
+      const list = document.getElementById('list');
+      const count = document.getElementById('count');
+      count.textContent = videos.length ? videos.length + '件' : '';
+
+      if (videos.length === 0) {
+        list.innerHTML = '<div class="empty-list">URLを入力して動画を追加</div>';
+        return;
+      }
+
+      list.innerHTML = videos.map(v => `
+        <div class="video-item ${v.id === activeId ? 'active' : ''}" data-id="${v.id}" onclick="playVideo('${v.id}')">
+          <img src="https://img.youtube.com/vi/${v.id}/mqdefault.jpg" alt="">
+          <div class="video-info">${v.id}</div>
+          <button class="remove-btn" onclick="removeVideo('${v.id}', event)">&times;</button>
+        </div>
+      `).join('');
+    }
+
+    document.getElementById('url').addEventListener('keydown', function(e) {
+      if (e.key === 'Enter') addVideo();
+    });
+  </script>
+</body>
+</html>
