@@ -284,6 +284,7 @@
         const data = JSON.parse(localStorage.getItem('yt-playlists'));
         if (Array.isArray(data) && data.length > 0) {
           playlists = data;
+          ensureSample();
           currentPlaylistId = localStorage.getItem('yt-current') || playlists[0].id;
         } else {
           initDefault();
@@ -293,9 +294,32 @@
       }
     }
 
+    const SAMPLE_ID = '_sample_';
+    const samplePlaylist = {
+      id: SAMPLE_ID,
+      name: 'サンプル',
+      locked: true,
+      videos: [
+        { id: 'dQw4w9WgXcQ' },
+        { id: 'jNQXAC9IVRw' },
+        { id: '9bZkp7q19f0' },
+        { id: 'kJQP7kiw5Fk' },
+        { id: 'JGwWNGJdvx8' }
+      ]
+    };
+
+    function ensureSample() {
+      const idx = playlists.findIndex(p => p.id === SAMPLE_ID);
+      if (idx === -1) {
+        playlists.unshift(JSON.parse(JSON.stringify(samplePlaylist)));
+      } else {
+        playlists[idx].locked = true;
+      }
+    }
+
     function initDefault() {
-      playlists = [{ id: genId(), name: 'リスト 1', videos: [] }];
-      currentPlaylistId = playlists[0].id;
+      playlists = [JSON.parse(JSON.stringify(samplePlaylist)), { id: genId(), name: 'リスト 1', videos: [] }];
+      currentPlaylistId = SAMPLE_ID;
       saveData();
     }
 
@@ -327,6 +351,7 @@
           const data = JSON.parse(e.target.result);
           if (!Array.isArray(data) || data.length === 0) throw new Error();
           playlists = data;
+          ensureSample();
           currentPlaylistId = playlists[0].id;
           activeId = null;
           stopPlayer();
@@ -352,7 +377,7 @@
 
     function renamePlaylist(id) {
       const pl = playlists.find(p => p.id === id);
-      if (!pl) return;
+      if (!pl || pl.locked) return;
       const name = prompt('新しい名前を入力:', pl.name);
       if (!name) return;
       pl.name = name;
@@ -362,6 +387,8 @@
 
     function deletePlaylist(id, e) {
       e.stopPropagation();
+      const pl = playlists.find(p => p.id === id);
+      if (!pl || pl.locked) return;
       if (playlists.length <= 1) return;
       if (!confirm('この再生リストを削除しますか？')) return;
       playlists = playlists.filter(p => p.id !== id);
@@ -480,7 +507,7 @@
         <div class="playlist-tab ${p.id === currentPlaylistId ? 'active' : ''}"
              onclick="switchPlaylist('${p.id}')"
              ondblclick="renamePlaylist('${p.id}')">
-          ${p.name}${playlists.length > 1 ? `<span class="tab-delete" onclick="deletePlaylist('${p.id}', event)">&times;</span>` : ''}
+          ${p.name}${!p.locked && playlists.length > 1 ? `<span class="tab-delete" onclick="deletePlaylist('${p.id}', event)">&times;</span>` : ''}
         </div>
       `).join('');
     }
