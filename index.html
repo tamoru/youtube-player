@@ -233,7 +233,10 @@
   <div class="playlist-bar">
     <div class="playlist-tabs" id="playlistTabs"></div>
     <div class="playlist-actions">
-      <button class="btn-small" onclick="createPlaylist()">+ 新規リスト</button>
+      <button class="btn-small" onclick="createPlaylist()">+ 新規</button>
+      <button class="btn-small" onclick="exportData()">保存</button>
+      <button class="btn-small" onclick="document.getElementById('importFile').click()">読込</button>
+      <input type="file" id="importFile" accept=".json" style="display:none" onchange="importData(event)">
     </div>
   </div>
   <div class="input-area">
@@ -302,6 +305,40 @@
 
     function currentPlaylist() {
       return playlists.find(p => p.id === currentPlaylistId);
+    }
+
+    // --- Export / Import ---
+    function exportData() {
+      const data = JSON.stringify(playlists, null, 2);
+      const blob = new Blob([data], { type: 'application/json' });
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = 'youtube-playlists.json';
+      a.click();
+      URL.revokeObjectURL(a.href);
+    }
+
+    function importData(event) {
+      const file = event.target.files[0];
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = function(e) {
+        try {
+          const data = JSON.parse(e.target.result);
+          if (!Array.isArray(data) || data.length === 0) throw new Error();
+          playlists = data;
+          currentPlaylistId = playlists[0].id;
+          activeId = null;
+          stopPlayer();
+          saveData();
+          renderTabs();
+          renderList();
+        } catch {
+          alert('ファイルの読み込みに失敗しました');
+        }
+      };
+      reader.readAsText(file);
+      event.target.value = '';
     }
 
     // --- Playlist management ---
