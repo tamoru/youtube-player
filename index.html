@@ -127,6 +127,16 @@
     }
     .video-item:hover { border-color: #333; }
     .video-item.active { border-color: #ff0000; }
+    .video-item .video-num {
+      font-size: 0.8rem;
+      color: #888;
+      width: 20px;
+      text-align: center;
+      flex-shrink: 0;
+    }
+    .video-item.active .video-num {
+      color: #ff0000;
+    }
     .video-item img {
       width: 100px;
       height: 56px;
@@ -237,7 +247,14 @@
       videos.splice(idx, 1);
       if (activeId === videoId) {
         activeId = null;
-        if (ytPlayer) { ytPlayer.destroy(); ytPlayer = null; }
+        if (ytPlayer) {
+          ytPlayer.destroy();
+          ytPlayer = null;
+          // YT.Player destroys the div, so recreate it
+          const div = document.createElement('div');
+          div.id = 'ytplayer';
+          document.getElementById('player').appendChild(div);
+        }
         document.getElementById('player').style.display = 'none';
         document.getElementById('placeholder').style.display = 'flex';
       }
@@ -271,6 +288,7 @@
         const idx = videos.findIndex(v => v.id === activeId);
         if (idx !== -1 && idx < videos.length - 1) {
           playVideo(videos[idx + 1].id);
+          renderList();
         }
       }
     }
@@ -285,8 +303,9 @@
         return;
       }
 
-      list.innerHTML = videos.map(v => `
-        <div class="video-item ${v.id === activeId ? 'active' : ''}" data-id="${v.id}" onclick="playVideo('${v.id}')">
+      list.innerHTML = videos.map((v, i) => `
+        <div class="video-item ${v.id === activeId ? 'active' : ''}" data-id="${v.id}" onclick="playVideo('${v.id}'); renderList();">
+          <span class="video-num">${i + 1}</span>
           <img src="https://img.youtube.com/vi/${v.id}/mqdefault.jpg" alt="">
           <div class="video-info">${v.id}</div>
           <button class="remove-btn" onclick="removeVideo('${v.id}', event)">&times;</button>
