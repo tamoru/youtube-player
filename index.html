@@ -427,6 +427,27 @@
       return m ? m[1] : null;
     }
 
+    function fetchTitle(videoId) {
+      return fetch('https://noembed.com/embed?url=https://www.youtube.com/watch?v=' + videoId)
+        .then(r => r.json())
+        .then(d => d.title || videoId)
+        .catch(() => videoId);
+    }
+
+    function fetchMissingTitles() {
+      playlists.forEach(pl => {
+        pl.videos.forEach(v => {
+          if (!v.title) {
+            fetchTitle(v.id).then(title => {
+              v.title = title;
+              saveData();
+              if (pl.id === currentPlaylistId) renderList();
+            });
+          }
+        });
+      });
+    }
+
     function addVideo() {
       const input = document.getElementById('url');
       const url = input.value.trim();
@@ -446,11 +467,18 @@
       }
 
       error.style.display = 'none';
-      pl.videos.push({ id: videoId });
+      const video = { id: videoId, title: '' };
+      pl.videos.push(video);
       input.value = '';
       saveData();
       renderList();
       playVideo(videoId);
+
+      fetchTitle(videoId).then(title => {
+        video.title = title;
+        saveData();
+        renderList();
+      });
     }
 
     function removeVideo(videoId, e) {
@@ -528,7 +556,7 @@
         <div class="video-item ${v.id === activeId ? 'active' : ''}" data-id="${v.id}" onclick="playVideo('${v.id}'); renderList();">
           <span class="video-num">${i + 1}</span>
           <img src="https://img.youtube.com/vi/${v.id}/mqdefault.jpg" alt="">
-          <div class="video-info">${v.id}</div>
+          <div class="video-info">${v.title || v.id}</div>
           <button class="remove-btn" onclick="removeVideo('${v.id}', event)">&times;</button>
         </div>
       `).join('');
@@ -542,6 +570,7 @@
     loadData();
     renderTabs();
     renderList();
+    fetchMissingTitles();
   </script>
 </body>
 </html>
