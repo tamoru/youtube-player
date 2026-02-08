@@ -21,6 +21,58 @@
       margin-bottom: 24px;
       font-weight: 500;
     }
+    .playlist-bar {
+      display: flex;
+      gap: 8px;
+      width: 100%;
+      max-width: 960px;
+      margin-bottom: 12px;
+      align-items: center;
+      flex-wrap: wrap;
+    }
+    .playlist-tabs {
+      display: flex;
+      gap: 6px;
+      flex-wrap: wrap;
+      flex: 1;
+    }
+    .playlist-tab {
+      padding: 6px 14px;
+      background: #1a1a1a;
+      border: 1px solid #333;
+      border-radius: 20px;
+      color: #ccc;
+      font-size: 0.85rem;
+      cursor: pointer;
+      white-space: nowrap;
+    }
+    .playlist-tab:hover { border-color: #555; }
+    .playlist-tab.active {
+      background: #ff0000;
+      border-color: #ff0000;
+      color: #fff;
+    }
+    .playlist-tab .tab-delete {
+      margin-left: 6px;
+      opacity: 0.6;
+      font-size: 0.75rem;
+    }
+    .playlist-tab .tab-delete:hover { opacity: 1; }
+    .playlist-actions {
+      display: flex;
+      gap: 6px;
+    }
+    .btn-small {
+      padding: 6px 12px;
+      background: #2a2a2a;
+      color: #ccc;
+      border: 1px solid #333;
+      border-radius: 20px;
+      font-size: 0.8rem;
+      cursor: pointer;
+      white-space: nowrap;
+    }
+    .btn-small:hover { border-color: #555; color: #fff; }
     .input-area {
       display: flex;
       gap: 8px;
@@ -178,6 +230,12 @@
 </head>
 <body>
   <h1>YouTube動画プレイヤー</h1>
+  <div class="playlist-bar">
+    <div class="playlist-tabs" id="playlistTabs"></div>
+    <div class="playlist-actions">
+      <button class="btn-small" onclick="createPlaylist()">+ 新規リスト</button>
+    </div>
+  </div>
   <div class="input-area">
     <input type="text" id="url" placeholder="YouTube URLを貼り付けてリストに追加">
     <button onclick="addVideo()">追加</button>
@@ -202,7 +260,8 @@
   </div>
   <script src="https://www.youtube.com/iframe_api"></script>
   <script>
-    const videos = [];
+    let playlists = [];
+    let currentPlaylistId = null;
     let activeId = null;
     let ytPlayer = null;
     let apiReady = false;
@@ -211,6 +270,94 @@
       apiReady = true;
     }
 
+    // --- localStorage ---
+    function saveData() {
+      localStorage.setItem('yt-playlists', JSON.stringify(playlists));
+      localStorage.setItem('yt-current', currentPlaylistId);
+    }
+
+    function loadData() {
+      try {
+        const data = JSON.parse(localStorage.getItem('yt-playlists'));
+        if (Array.isArray(data) && data.length > 0) {
+          playlists = data;
+          currentPlaylistId = localStorage.getItem('yt-current') || playlists[0].id;
+        } else {
+          initDefault();
+        }
+      } catch {
+        initDefault();
+      }
+    }
+
+    function initDefault() {
+      playlists = [{ id: genId(), name: 'リスト 1', videos: [] }];
+      currentPlaylistId = playlists[0].id;
+      saveData();
+    }
+
+    function genId() {
+      return Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+    }
+
+    function currentPlaylist() {
+      return playlists.find(p => p.id === currentPlaylistId);
+    }
+
+    // --- Playlist management ---
+    function createPlaylist() {
+      const name = prompt('再生リスト名を入力してください:', 'リスト ' + (playlists.length + 1));
+      if (!name) return;
+      const pl = { id: genId(), name: name, videos: [] };
+      playlists.push(pl);
+      switchPlaylist(pl.id);
+    }
+
+    function renamePlaylist(id) {
+      const pl = playlists.find(p => p.id === id);
+      if (!pl) return;
+      const name = prompt('新しい名前を入力:', pl.name);
+      if (!name) return;
+      pl.name = name;
+      saveData();
+      renderTabs();
+    }
+
+    function deletePlaylist(id, e) {
+      e.stopPropagation();
+      if (playlists.length <= 1) return;
+      if (!confirm('この再生リストを削除しますか？')) return;
+      playlists = playlists.filter(p => p.id !== id);
+      if (currentPlaylistId === id) {
+        switchPlaylist(playlists[0].id);
+      } else {
+        saveData();
+        renderTabs();
+      }
+    }
+
+    function switchPlaylist(id) {
+      currentPlaylistId = id;
+      activeId = null;
+      stopPlayer();
+      saveData();
+      renderTabs();
+      renderList();
+    }
+
+    function stopPlayer() {
+      if (ytPlayer) {
+        ytPlayer.destroy();
+        ytPlayer = null;
+        const div = document.createElement('div');
+        div.id = 'ytplayer';
+        document.getElementById('player').appendChild(div);
+      }
+      document.getElementById('player').style.display = 'none';
+      document.getElementById('placeholder').style.display = 'flex';
+    }
+
+    // --- Video ---
     function extractVideoId(url) {
       const m = url.match(/(?:youtube\.com\/watch\?.*v=|youtu\.be\/|youtube\.com\/embed\/|youtube\.com\/shorts\/)([a-zA-Z0-9_-]{11})/);
       return m ? m[1] : null;
@@ -221,12 +368,13 @@
       const url = input.value.trim();
       const error = document.getElementById('error');
       const videoId = extractVideoId(url);
+      const pl = currentPlaylist();
 
       if (!videoId) {
         error.style.display = 'block';
         return;
       }
-      if (videos.some(v => v.id === videoId)) {
+      if (pl.videos.some(v => v.id === videoId)) {
         error.style.display = 'none';
         playVideo(videoId);
         input.value = '';
@@ -234,30 +382,24 @@
       }
 
       error.style.display = 'none';
-      videos.push({ id: videoId });
+      pl.videos.push({ id: videoId });
       input.value = '';
+      saveData();
       renderList();
       playVideo(videoId);
     }
 
     function removeVideo(videoId, e) {
       e.stopPropagation();
-      const idx = videos.findIndex(v => v.id === videoId);
+      const pl = currentPlaylist();
+      const idx = pl.videos.findIndex(v => v.id === videoId);
       if (idx === -1) return;
-      videos.splice(idx, 1);
+      pl.videos.splice(idx, 1);
       if (activeId === videoId) {
         activeId = null;
-        if (ytPlayer) {
-          ytPlayer.destroy();
-          ytPlayer = null;
-          // YT.Player destroys the div, so recreate it
-          const div = document.createElement('div');
-          div.id = 'ytplayer';
-          document.getElementById('player').appendChild(div);
-        }
-        document.getElementById('player').style.display = 'none';
-        document.getElementById('placeholder').style.display = 'flex';
+        stopPlayer();
       }
+      saveData();
       renderList();
     }
 
@@ -285,15 +427,30 @@
 
     function onPlayerStateChange(event) {
       if (event.data === YT.PlayerState.ENDED) {
-        const idx = videos.findIndex(v => v.id === activeId);
-        if (idx !== -1 && idx < videos.length - 1) {
-          playVideo(videos[idx + 1].id);
+        const pl = currentPlaylist();
+        const idx = pl.videos.findIndex(v => v.id === activeId);
+        if (idx !== -1 && idx < pl.videos.length - 1) {
+          playVideo(pl.videos[idx + 1].id);
           renderList();
         }
       }
     }
 
+    // --- Render ---
+    function renderTabs() {
+      const container = document.getElementById('playlistTabs');
+      container.innerHTML = playlists.map(p => `
+        <div class="playlist-tab ${p.id === currentPlaylistId ? 'active' : ''}"
+             onclick="switchPlaylist('${p.id}')"
+             ondblclick="renamePlaylist('${p.id}')">
+          ${p.name}${playlists.length > 1 ? `<span class="tab-delete" onclick="deletePlaylist('${p.id}', event)">&times;</span>` : ''}
+        </div>
+      `).join('');
+    }
+
     function renderList() {
+      const pl = currentPlaylist();
+      const videos = pl.videos;
       const list = document.getElementById('list');
       const count = document.getElementById('count');
       count.textContent = videos.length ? videos.length + '件' : '';
@@ -316,6 +473,11 @@
     document.getElementById('url').addEventListener('keydown', function(e) {
       if (e.key === 'Enter') addVideo();
     });
+
+    // --- Init ---
+    loadData();
+    renderTabs();
+    renderList();
   </script>
 </body>
 </html>
